@@ -11,10 +11,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.servlet.ModelAndView;
 
+import com.books.exceptions.LoanException;
 import com.books.models.Book;
 import com.books.models.Customer;
 import com.books.models.Loan;
@@ -33,8 +36,6 @@ public class LoanController {
 	
 	@Autowired
 	private CustomerService customerService;
-	
-	public String message = "test message";
 	
 	@RequestMapping(value = "/showLoans", method = RequestMethod.GET)
 	public String getLoans(Model l) {
@@ -78,33 +79,46 @@ public class LoanController {
 	
 	@RequestMapping(value = "/newLoan", method = RequestMethod.POST)
 	public String addBook(@Valid @ModelAttribute("newLoan") Loan l, BindingResult result, HttpServletRequest h, Model model) 
-	{
-
-		if (l.getBook()==null)
-		{
-			message = "no such book";
-			System.out.println(message);
-			return "noBookSelected";
-		}
-		else if (l.getCust()==null)
-		{
-			message = "no such customer";
-			System.out.println(message);
-			return "noCustomerSelected";
-		}
-		else 
-		{
-			loanService.save(l);
-			bookService.addBook(l.getBook());
-			customerService.addCustomer(l.getCust());
+	throws Exception {
+		if (result.hasErrors()) {
+			return "newLoan";
+		} else {
 			
-			ArrayList<Loan> loans = loanService.listLoans();
+			Book book = l.getBook();
+			Customer customer = l.getCust();
+			String errorMessage = "";
+			
+			if (book == null) {
+				errorMessage += "No such book: ";
+			}
+			
+			if (customer == null) {
+				errorMessage += " No such customer: ";
+			}			
+			
+			// If there is no error message then add the loan to the database
+			if (errorMessage.isEmpty()) {
+				loanService.save(l);
+				bookService.addBook(l.getBook());
+				customerService.addCustomer(l.getCust());
+				
+				ArrayList<Loan> loans = loanService.listLoans();
+		
+				model.addAttribute("loans", loans);
 	
-			model.addAttribute("loans", loans);
-
-			return "redirect:showLoans";
+				return "redirect:showLoans";
+			} else {
+				throw new LoanException(l, errorMessage);
+			}
 		}
 	}
+	
+	@ExceptionHandler(LoanException.class)
+	public ModelAndView handleCustomException(LoanException ex) {
+		ModelAndView model = new ModelAndView("loanError");
+		model.addObject("exception", ex);
+		return model;
+	}	
 	
 	@RequestMapping(value = "/deleteLoan", method = RequestMethod.GET)
 	public String deleteLoan(@Valid @ModelAttribute("deleteLoan") Loan l, BindingResult result, HttpServletRequest h, Model model) {
@@ -122,8 +136,6 @@ public class LoanController {
 		loanService.delete(loan);
 		
 		return "redirect:showLoans";
- 	}
-	
 
-
+	}
 }
